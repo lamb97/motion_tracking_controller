@@ -19,10 +19,10 @@ class MotionOnnxPolicy : public OnnxPolicy {
   std::string getAnchorBodyName() const { return anchorBodyName_; }
   std::vector<std::string> getBodyNames() const { return bodyNames_; }
 
-  vector_t getJointPosition() const { return jointPosition_; }
-  vector_t getJointVelocity() const { return jointVelocity_; }
-  std::vector<vector3_t> getBodyPositions() const { return bodyPositions_; }
-  std::vector<quaternion_t> getBodyOrientations() const { return bodyOrientations_; }
+  const vector_t& getJointPosition() const { return jointPosition_; }
+  const vector_t& getJointVelocity() const { return jointVelocity_; }
+  const std::vector<vector3_t>& getBodyPositions() const { return bodyPositions_; }
+  const std::vector<quaternion_t>& getBodyOrientations() const { return bodyOrientations_; }
 
   void parseMetadata() override;
 
