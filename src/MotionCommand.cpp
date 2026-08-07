@@ -16,6 +16,7 @@ void MotionCommandTerm::reset() {
   if (anchorRobotIndex_ >= pinModel.nframes) {
     throw std::runtime_error("Anchor body " + cfg_.anchorBody + " not found.");
   }
+  bodyIndices_.clear();
   for (const auto& bodyName : cfg_.bodyNames) {
     bodyIndices_.push_back(pinModel.getFrameId(bodyName));
     if (bodyIndices_.back() >= pinModel.nframes) {
@@ -40,10 +41,6 @@ void MotionCommandTerm::reset() {
   worldToAnchor.rotation() = yawQuaternion(quaternion_t(worldToAnchor.rotation()));
 
   worldToInit_ = worldToAnchor * initToAnchor.inverse();
-
-  std::cerr << initToAnchor << std::endl;
-  std::cerr << worldToAnchor << std::endl;
-  std::cerr << worldToInit_ << std::endl;
 }
 
 vector3_t MotionCommandTerm::getAnchorPositionLocal() const {
