@@ -25,6 +25,7 @@ class MotionOnnxPolicy : public OnnxPolicy {
   const std::vector<quaternion_t>& getBodyOrientations() const { return bodyOrientations_; }
 
   void parseMetadata() override;
+  void checkInputOutput() override;
 
  protected:
   size_t timeStep_ = 0, startStep_ = 0;
