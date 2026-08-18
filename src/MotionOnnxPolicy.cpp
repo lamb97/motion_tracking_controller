@@ -9,9 +9,10 @@
 namespace legged {
 
 void MotionOnnxPolicy::reset() {
-  OnnxPolicy::reset();
   timeStep_ = startStep_;
   forward(vector_t::Zero(getObservationSize()));
+  timeStep_ = startStep_;
+  OnnxPolicy::reset();
 }
 
 vector_t MotionOnnxPolicy::forward(const vector_t& observations) {
