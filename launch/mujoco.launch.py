@@ -1,12 +1,19 @@
 import os
+import json
+import math
+import xml.etree.ElementTree as ET
 
 from launch import LaunchDescription
+from launch.conditions import IfCondition
+from launch.substitution import Substitution
 from launch.actions import (
     DeclareLaunchArgument,
     OpaqueFunction,
     SetLaunchConfiguration,
-    IncludeLaunchDescription
+    IncludeLaunchDescription,
+    RegisterEventHandler,
 )
+from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import Command, FindExecutable, PathJoinSubstitution, LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
@@ -14,6 +21,36 @@ from launch_ros.substitutions import FindPackageShare
 from legged_bringup.launch_utils import (
     get_controller_names, generate_temp_config, resolve_policy_paths, download_wandb_onnx, control_spawner
 )
+
+
+class InitialJointPositions(Substitution):
+    """Optionally set simulation joint initialization in the generated URDF."""
+
+    def __init__(self, robot_description):
+        super().__init__()
+        self.robot_description = robot_description
+
+    def perform(self, context):
+        description = self.robot_description.perform(context)
+        override = LaunchConfiguration('initial_joint_positions').perform(context)
+        if not override:
+            return description
+        positions = json.loads(override)
+        if not isinstance(positions, dict) or not all(math.isfinite(float(v)) for v in positions.values()):
+            raise ValueError('initial_joint_positions must be a JSON object of finite joint angles')
+        root = ET.fromstring(description)
+        found = set()
+        for joint in root.findall('.//ros2_control/joint'):
+            name = joint.get('name')
+            if name in positions:
+                param = joint.find("state_interface[@name='position']/param[@name='initial_value']")
+                if param is None:
+                    raise ValueError(f'No initial position interface for {name}')
+                param.text = str(float(positions[name]))
+                found.add(name)
+        if found != set(positions):
+            raise ValueError(f'Unknown initial joints: {set(positions) - found}')
+        return ET.tostring(root, encoding='unicode')
 
 
 def setup_controllers(context):
@@ -57,7 +94,12 @@ def setup_controllers(context):
     active_spawner = control_spawner(active_list, param_file=param_file)
     inactive_spawner = control_spawner(inactive_list, param_file=param_file, inactive=True)
 
-    return [set_controllers_yaml, active_spawner, inactive_spawner]
+    # Avoid two spawners racing for controller-manager services while physics
+    # is already running. Load the unused standby controller after the policy.
+    spawn_inactive_after_active = RegisterEventHandler(
+        OnProcessExit(target_action=active_spawner, on_exit=[inactive_spawner])
+    )
+    return [set_controllers_yaml, spawn_inactive_after_active, active_spawner]
 
 
 def generate_launch_description():
@@ -75,7 +117,7 @@ def generate_launch_description():
         ]),
         " ", "robot_type:=", robot_type,
         " ", "simulation:=", "mujoco"])
-    robot_description = {"robot_description": robot_description_command}
+    robot_description = {"robot_description": InitialJointPositions(robot_description_command)}
 
     node_robot_state_publisher = Node(
         package='robot_state_publisher',
@@ -111,6 +153,10 @@ def generate_launch_description():
 
     return LaunchDescription([
         DeclareLaunchArgument('robot_type', default_value='g1'),
+        DeclareLaunchArgument('initial_joint_positions', default_value='',
+                              description='Optional JSON joint-name to initial-position mapping (simulation only)'),
+        DeclareLaunchArgument('enable_teleop', default_value='true',
+                              description='Launch joystick teleoperation'),
         DeclareLaunchArgument(
             'policy_path',
             default_value='',
@@ -136,6 +182,7 @@ def generate_launch_description():
         node_robot_state_publisher,
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(teleop),
+            condition=IfCondition(LaunchConfiguration('enable_teleop')),
             launch_arguments={'robot_type': robot_type}.items()
         )
     ])
